@@ -494,6 +494,21 @@ def _parse_promotion_date(text: str) -> datetime | None:
         return None
 
 
+def _extract_deadline_hint(text: str) -> str | None:
+    """Извлекает срок из текста: «до 30 апреля», «только до 28 февраля»."""
+    match = re.search(
+        r"(?:до|по)\s+(\d{1,2})\s+"
+        r"(января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря)",
+        text,
+        re.I,
+    )
+    if match:
+        return f"Срок: до {match.group(1)} {match.group(2).lower()}"
+    if re.search(r"весь\s+декабрь|весь\s+месяц|только\s+один\s+день", text, re.I):
+        return "Срок: указан в описании акции"
+    return None
+
+
 def parse_promotions() -> str:
     soup = parse_page(URLS["promotions"])
     if soup is None:
@@ -502,6 +517,7 @@ def parse_promotions() -> str:
     root = _find_content_root(soup)
     promotions: list[tuple[datetime | None, str]] = []
     cutoff = datetime.now() - timedelta(days=PROMO_MAX_AGE_DAYS)
+    today_label = datetime.now().strftime("%d.%m.%Y")
 
     for heading in root.find_all(["h4", "h3"]):
         title = heading.get_text(strip=True)
@@ -537,12 +553,23 @@ def parse_promotions() -> str:
         entry = f"• {title}"
         if desc:
             entry += f"\n  {desc}"
+        deadline = _extract_deadline_hint(f"{title} {desc}")
+        if deadline:
+            entry += f"\n  {deadline}"
         if promo_date:
-            entry += f"\n  Дата: {promo_date.strftime('%d.%m.%Y')}"
+            entry += f"\n  Опубликовано: {promo_date.strftime('%d.%m.%Y')}"
         promotions.append((promo_date or datetime.min, entry))
 
     promotions.sort(key=lambda x: x[0], reverse=True)
-    return clean_text("\n\n".join(item[1] for item in promotions[:12]))
+    body = "\n\n".join(item[1] for item in promotions[:12])
+    if not body:
+        return "(акции на сайте не найдены — см. https://centr-krasok.kz/promotions/)"
+
+    header = (
+        f"Список со страницы {URLS['promotions']} (обновлено {today_label}).\n"
+        "При ответе покупателю перечисляй эти акции; актуальность сроков уточняй у менеджеров.\n"
+    )
+    return clean_text(header + "\n" + body)
 
 
 def _extract_brands_from_catalog(root: Tag) -> list[str]:
