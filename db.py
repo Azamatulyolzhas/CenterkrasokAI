@@ -90,6 +90,10 @@ async def close_pool() -> None:
         logger.info("Пул PostgreSQL закрыт")
 
 
+def is_db_ready() -> bool:
+    return _pool is not None
+
+
 async def add_or_update_user(
     chat_id: int,
     username: str | None,

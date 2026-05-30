@@ -14,6 +14,7 @@ from db import (
     get_stats,
     increment_message_count,
     init_db,
+    is_db_ready,
     save_message,
 )
 
@@ -77,7 +78,13 @@ def _format_stats_message(stats: dict) -> str:
 
 
 async def post_init(_application: Application) -> None:
-    await init_db()
+    db_ok = await init_db()
+    admin_id = _get_admin_chat_id()
+    logger.info("PostgreSQL: %s", "подключена" if db_ok else "не подключена")
+    if admin_id is None:
+        logger.warning("ADMIN_CHAT_ID не задан — /stats покажет подсказку по настройке")
+    else:
+        logger.info("ADMIN_CHAT_ID задан (id=%s)", admin_id)
 
 
 async def post_shutdown(_application: Application) -> None:
@@ -88,22 +95,60 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(WELCOME_MESSAGE)
 
 
+async def myid_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Показывает chat_id — нужен для настройки ADMIN_CHAT_ID."""
+    if not update.message or not update.effective_chat:
+        return
+    chat_id = update.effective_chat.id
+    user = update.effective_user
+    username = f"@{user.username}" if user and user.username else "—"
+    await update.message.reply_text(
+        f"Ваш chat_id: `{chat_id}`\n"
+        f"Username: {username}\n\n"
+        f"Скопируйте chat_id в переменную ADMIN_CHAT_ID на Railway.",
+        parse_mode="Markdown",
+    )
+
+
 async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not update.message or not update.effective_chat:
         return
 
+    user_chat_id = update.effective_chat.id
     admin_id = _get_admin_chat_id()
+
     if admin_id is None:
-        logger.warning("ADMIN_CHAT_ID не задан — команда /stats недоступна")
+        await update.message.reply_text(
+            "⚠️ Статистика не настроена: переменная ADMIN_CHAT_ID не задана на сервере.\n\n"
+            f"Ваш chat_id: {user_chat_id}\n"
+            "Добавьте его в Railway → Variables → ADMIN_CHAT_ID и перезапустите бот.\n"
+            "Подсказка: команда /myid"
+        )
         return
 
-    if update.effective_chat.id != admin_id:
+    if user_chat_id != admin_id:
+        await update.message.reply_text(
+            f"⛔ Нет доступа к статистике.\n\n"
+            f"Ваш chat_id: {user_chat_id}\n"
+            f"Ожидается ADMIN_CHAT_ID: {admin_id}\n\n"
+            "Если это ваш аккаунт — обновите ADMIN_CHAT_ID на Railway."
+        )
+        return
+
+    if not is_db_ready():
+        await update.message.reply_text(
+            "⚠️ База данных не подключена.\n\n"
+            "На Railway:\n"
+            "1. Добавьте сервис PostgreSQL\n"
+            "2. В сервисе бота → Variables → Reference → DATABASE_URL\n"
+            "3. Перезапустите деплой"
+        )
         return
 
     stats = await get_stats()
     if stats is None:
         await update.message.reply_text(
-            "База данных недоступна. Проверьте DATABASE_URL на Railway."
+            "Не удалось получить статистику из БД. Смотрите логи Railway."
         )
         return
 
@@ -150,6 +195,7 @@ def main() -> None:
     )
 
     application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("myid", myid_command))
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
