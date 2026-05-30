@@ -136,3 +136,10 @@ def get_data_source() -> str:
     """Для логов при старте бота: 'file' или 'fallback'."""
     _, source = load_knowledge_base()
     return source
+
+
+def __getattr__(name: str):
+    """Совместимость: старый ai_handler импортировал SYSTEM_PROMPT."""
+    if name == "SYSTEM_PROMPT":
+        return get_system_prompt()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

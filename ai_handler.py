@@ -5,7 +5,7 @@ from typing import Any
 from dotenv import load_dotenv
 from groq import Groq
 
-from company_data import SYSTEM_PROMPT
+from company_data import get_system_prompt
 
 load_dotenv()
 
@@ -41,7 +41,7 @@ def add_assistant_message(chat_id: int, text: str) -> None:
 
 
 def build_messages(chat_id: int) -> list[dict[str, Any]]:
-    messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages: list[dict[str, Any]] = [{"role": "system", "content": get_system_prompt()}]
     messages.extend(conversation_history.get(chat_id, []))
     return messages
 

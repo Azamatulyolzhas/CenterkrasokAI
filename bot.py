@@ -7,6 +7,7 @@ from telegram.constants import ChatAction
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from ai_handler import get_ai_response
+from company_data import DATA_FILE, get_system_prompt
 
 load_dotenv()
 
@@ -55,6 +56,8 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    get_system_prompt()
+    logger.info("База знаний: %s", DATA_FILE)
     logger.info("Бот запущен (polling)...")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
